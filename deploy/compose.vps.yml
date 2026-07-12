@@ -1,0 +1,26 @@
+services:
+  platform-trace:
+    image: platform-trace:latest
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "3040:3040"
+    environment:
+      - PORT=3040
+      - HOST=0.0.0.0
+      - PLATFORM_TRACE_DATA_DIR=/data
+      - PLATFORM_PUBLIC_URL=${PLATFORM_PUBLIC_URL:-https://trace.noirstack.com}
+      - PLATFORM_TRACE_TOKEN
+      - COLLECTOR_INTERVAL_MS=${COLLECTOR_INTERVAL_MS:-30000}
+      - COLLECTOR_CASCADES_ENABLED=${COLLECTOR_CASCADES_ENABLED:-true}
+      - COLLECTOR_CASCADES_URL=${COLLECTOR_CASCADES_URL:-http://cascades:3000}
+      - COLLECTOR_CASCADES_LEGACY_ENABLED=${COLLECTOR_CASCADES_LEGACY_ENABLED:-true}
+      - COLLECTOR_PLATFORM_HEALTH_ENABLED=${COLLECTOR_PLATFORM_HEALTH_ENABLED:-true}
+      - COLLECTOR_PLATFORM_HEALTH_URL=${COLLECTOR_PLATFORM_HEALTH_URL:-http://platform-api:3000}
+    volumes:
+      - platform-trace-data:/data
+    restart: unless-stopped
+
+volumes:
+  platform-trace-data:

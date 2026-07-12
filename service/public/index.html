@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Platform Trace — Execution Reporter</title>
+<link rel="stylesheet" href="/css/cascades.css" />
+<link rel="stylesheet" href="/css/execution-trace.css" />
+<style>
+.pt-page { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+.pt-header { margin-bottom: 1.5rem; }
+.pt-title { font-size: 1.75rem; font-weight: 600; }
+.pt-sub { color: var(--fg-muted); font-size: .875rem; margin-top: .35rem; }
+.pt-toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
+.pt-runs { display: grid; gap: .75rem; }
+.pt-run-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: .75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated, var(--card));
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+.pt-run-row:hover { border-color: #58a6ff; }
+.pt-run-source { font-size: .625rem; text-transform: uppercase; color: var(--fg-muted); letter-spacing: .05em; }
+.pt-run-wf { font-weight: 600; font-size: .875rem; }
+.pt-run-id { font-family: monospace; font-size: .6875rem; color: var(--fg-muted); }
+.badge-status { display: inline-block; padding: .125rem .5rem; border-radius: 999px; font-size: .625rem; text-transform: uppercase; }
+.badge-status.completed { background: rgba(63,185,80,.15); color: #3fb950; }
+.badge-status.running { background: rgba(88,166,255,.15); color: #58a6ff; }
+.badge-status.failed { background: rgba(248,81,73,.15); color: #f85149; }
+#trace-view { margin-top: 1.5rem; }
+.pt-back { margin-bottom: 1rem; }
+</style>
+</head>
+<body class="dash-body">
+<div class="pt-page">
+  <header class="pt-header">
+    <div class="pt-title">Platform Trace</div>
+    <div class="pt-sub">Cross-infrastructure execution maps — workflows, collectors, API calls, and automation runs from every Noir Stack service.</div>
+  </header>
+
+  <div id="list-view">
+    <div class="pt-toolbar">
+      <label>Source <select id="filter-source"><option value="">All</option></select></label>
+      <label>Status <select id="filter-status">
+        <option value="">All</option>
+        <option value="running">Running</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed</option>
+      </select></label>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh">⟳ Refresh</button>
+      <span id="pt-live" class="exec-trace-live" hidden><span class="exec-trace-live-dot"></span> Live</span>
+    </div>
+    <div class="pt-runs" id="runs-list"></div>
+  </div>
+
+  <div id="trace-view" hidden>
+    <button type="button" class="btn btn-ghost btn-sm pt-back" id="btn-back">← All runs</button>
+    <div id="execution-trace-root"></div>
+  </div>
+</div>
+
+<script src="/js/execution-trace.js"></script>
+<script>
+const API = '/api/v1';
+let traceController = null;
+let pollTimer = null;
+
+async function get(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+function statusClass(s) { return String(s || 'pending').replace(/_/g, '-'); }
+
+function showList() {
+  document.getElementById('list-view').hidden = false;
+  document.getElementById('trace-view').hidden = true;
+  if (traceController) { traceController.destroy(); traceController = null; }
+  const q = new URLSearchParams(location.search);
+  q.delete('runId');
+  history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : ''));
+}
+
+function showTrace(runId) {
+  document.getElementById('list-view').hidden = true;
+  document.getElementById('trace-view').hidden = false;
+  const root = document.getElementById('execution-trace-root');
+  if (traceController) traceController.destroy();
+  traceController = ExecutionTrace.createController(root, { runId, apiPrefix: API });
+  traceController.start().catch((e) => { root.innerHTML = `<p>${e.message}</p>`; });
+  history.replaceState(null, '', `?runId=${encodeURIComponent(runId)}`);
+}
+
+async function loadSources() {
+  try {
+    const { sources } = await get(`${API}/sources`);
+    const sel = document.getElementById('filter-source');
+    sources.forEach((s) => {
+      if ([...sel.options].some((o) => o.value === s)) return;
+      const o = document.createElement('option');
+      o.value = s; o.textContent = s;
+      sel.appendChild(o);
+    });
+  } catch { /* ignore */ }
+}
+
+async function loadRuns() {
+  const source = document.getElementById('filter-source').value;
+  const status = document.getElementById('filter-status').value;
+  const q = new URLSearchParams({ limit: '80' });
+  if (source) q.set('source', source);
+  if (status) q.set('status', status);
+  const { runs } = await get(`${API}/runs?${q}`);
+  const el = document.getElementById('runs-list');
+  const live = runs.some((r) => ['running', 'pending', 'paused'].includes(r.status));
+  document.getElementById('pt-live').hidden = !live;
+
+  el.innerHTML = runs.length ? runs.map((r) => `
+    <a class="pt-run-row" href="?runId=${encodeURIComponent(r.id)}" data-run="${r.id}">
+      <div>
+        <div class="pt-run-source">${r.source}</div>
+        <div class="pt-run-wf">${r.workflow_name || r.workflow_id || 'Run'}</div>
+        <div class="pt-run-id">${r.id}${r.external_run_id ? ' · ext ' + r.external_run_id.slice(0, 20) : ''}</div>
+      </div>
+      <span class="badge-status ${statusClass(r.status)}">${r.status.replace(/_/g, ' ')}</span>
+      <span style="font-size:.75rem;color:var(--fg-muted)">${new Date(r.started_at).toLocaleString()}</span>
+    </a>`).join('') : '<p style="color:var(--fg-muted)">No runs yet. Enable collectors or wire PLATFORM_TRACE_URL on your services.</p>';
+
+  el.querySelectorAll('.pt-run-row').forEach((row) => {
+    row.addEventListener('click', (e) => {
+      e.preventDefault();
+      showTrace(row.getAttribute('data-run'));
+    });
+  });
+}
+
+function schedulePoll() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(() => loadRuns().catch(() => {}), 5000);
+}
+
+document.getElementById('btn-refresh').addEventListener('click', () => loadRuns());
+document.getElementById('filter-source').addEventListener('change', () => loadRuns());
+document.getElementById('filter-status').addEventListener('change', () => loadRuns());
+document.getElementById('btn-back').addEventListener('click', showList);
+
+(async () => {
+  await loadSources();
+  await loadRuns();
+  schedulePoll();
+  const runId = new URLSearchParams(location.search).get('runId');
+  if (runId) showTrace(runId);
+})();
+</script>
+</body>
+</html>

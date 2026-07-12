@@ -1,0 +1,20 @@
+{
+  "name": "platform-trace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-infrastructure execution tracing and reporting — ingest, store, visualize every workflow and automation run.",
+  "type": "module",
+  "workspaces": [
+    "service",
+    "sdk/trace-client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @noirstack/platform-trace-service",
+    "build": "npm run build -w @noirstack/trace-client && npm run build -w @noirstack/platform-trace-service",
+    "start": "npm run start -w @noirstack/platform-trace-service",
+    "test": "npm run test -w @noirstack/platform-trace-service"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
