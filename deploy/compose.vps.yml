@@ -1,26 +1,64 @@
+# trace.noirstack.com — cross-infrastructure execution reporting
+
 services:
   platform-trace:
+    container_name: platform-trace
     image: platform-trace:latest
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    ports:
-      - "3040:3040"
+    restart: unless-stopped
+    security_opt:
+      - seccomp=unconfined
     environment:
+      - NODE_ENV=production
       - PORT=3040
       - HOST=0.0.0.0
       - PLATFORM_TRACE_DATA_DIR=/data
       - PLATFORM_PUBLIC_URL=${PLATFORM_PUBLIC_URL:-https://trace.noirstack.com}
+      - PLATFORM_TRACE_AUTH_REQUIRED=${PLATFORM_TRACE_AUTH_REQUIRED:-1}
+      - PLATFORM_TRACE_AUTH_PROVIDER=${PLATFORM_TRACE_AUTH_PROVIDER:-auth0}
       - PLATFORM_TRACE_TOKEN
+      - AUTH0_SECRET
+      - AUTH0_BASE_URL
+      - AUTH0_CLIENT_ID
+      - AUTH0_CLIENT_SECRET
+      - AUTH0_ISSUER_BASE_URL
+      - AUTH0_DOMAIN
+      - AUTH0_AUDIENCE
+      - KEYCLOAK_BASE_URL
+      - KEYCLOAK_REALM
+      - KEYCLOAK_CLIENT_ID
+      - KEYCLOAK_CLIENT_SECRET
+      - KEYCLOAK_REDIRECT_URI
+      - KEYCLOAK_HOME_URL
+      - PLATFORM_TRACE_REQUIRED_ROLES
+      - PLATFORM_TRACE_COOKIE_SECURE
       - COLLECTOR_INTERVAL_MS=${COLLECTOR_INTERVAL_MS:-30000}
       - COLLECTOR_CASCADES_ENABLED=${COLLECTOR_CASCADES_ENABLED:-true}
       - COLLECTOR_CASCADES_URL=${COLLECTOR_CASCADES_URL:-http://cascades:3000}
       - COLLECTOR_CASCADES_LEGACY_ENABLED=${COLLECTOR_CASCADES_LEGACY_ENABLED:-true}
       - COLLECTOR_PLATFORM_HEALTH_ENABLED=${COLLECTOR_PLATFORM_HEALTH_ENABLED:-true}
       - COLLECTOR_PLATFORM_HEALTH_URL=${COLLECTOR_PLATFORM_HEALTH_URL:-http://platform-api:3000}
+      - COLLECTOR_CASCADES_TOKEN
     volumes:
       - platform-trace-data:/data
-    restart: unless-stopped
+    networks:
+      - traefik
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:3040/api/health >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 volumes:
   platform-trace-data:
+
+networks:
+  traefik:
+    external: true

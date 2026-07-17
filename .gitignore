@@ -1,6 +1,9 @@
 node_modules/
+deploy/vps/.platform-trace-token
+deploy/vps/runtime.env
 dist/
 data/
 .env
 *.log
 .DS_Store
+deploy/vps/.platform-trace-keycloak-secret
